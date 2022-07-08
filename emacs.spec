@@ -1,9 +1,10 @@
 %global _hardened_build 1
 
-%global commit      2b5ea36ce9659ee16ebff36e2642927691c391ee
-%global shortcommit %(c=%{commit}; echo ${c:0:7})
-%global commit_date 20220329
-%global gitrel      .%{commit_date}.git%{shortcommit}
+%global build_timestamp %(date +"%Y%m%d")
+%global forgeurl https://github.com/emacs-mirror/emacs
+%global branch   master
+
+%forgemeta
 
 # disable these for now until .pdmp is fixed
 %global enable_lucid 0
@@ -14,10 +15,10 @@ Summary:       GNU Emacs text editor
 Name:          emacs
 Epoch:         1
 Version:       29.0.50
-Release:       1%{gitrel}%{?dist}
+Release:       1%{?dist}
 License:       GPLv3+ and CC0-1.0
-URL:           http://www.gnu.org/software/emacs/
-Source0:       https://github.com/emacs-mirror/emacs/archive/%{commit}/%{name}-%{shortcommit}.tar.gz
+URL:           %{forgeurl}
+Source0:       %{forgesource}
 # generate the keyring via:
 # wget https://ftp.gnu.org/gnu/gnu-keyring.gpg
 # gpg2 --import gnu-keyring.gpg
@@ -82,6 +83,8 @@ BuildRequires: gtk3-devel
 BuildRequires: webkit2gtk3-devel
 
 BuildRequires: gnupg2
+
+BuildRequires: mold
 
 %if %{enable_lucid}
 # For lucid
@@ -198,7 +201,7 @@ Summary: Development header files for Emacs
 Development header files for Emacs.
 
 %prep
-%setup -q -n emacs-%{commit}
+%{forgesetup}
 
 %patch1 -p1 -b .spellchecker
 %patch2 -p1 -b .system-crypto-policies
@@ -230,6 +233,9 @@ ln -s ../../%{name}/%{version}/etc/NEWS doc
 
 %build
 export CFLAGS="-DMAIL_USE_LOCKF %{build_cflags}"
+export LD=/usr/bin/mold
+export CFLAGS+=" -fuse-ld=gold"
+export CXXFLAGS+=" -fuse-ld=gold"
 %set_build_flags
 
 # Build GTK+ binary
@@ -238,13 +244,31 @@ ln -s ../configure .
 
 LDFLAGS=-Wl,-z,relro;  export LDFLAGS;
 
-%configure --with-dbus --with-gif --with-jpeg --with-png --with-rsvg \
-            --with-tiff --with-xft --with-xpm --with-gpm=no \
-            --with-xwidgets --with-modules --with-harfbuzz --with-cairo --with-json \
-            --with-pgtk --with-native-compilation --enable-link-time-optimization
-
-%make_build NATIVE_FULL_AOT=1 bootstrap
-%{setarch} %make_build
+_conf=(
+  --with-dbus
+  --with-gif
+  --with-jpeg
+  --with-png
+  --with-rsvg
+  --with-tiff
+  --with-xft
+  --with-xpm
+  --with-xwidgets
+  --with-modules
+  --with-harfbuzz
+  --with-cairo
+  --with-json
+  --with-pgtk
+  --without-xaw3d
+  --with-native-compilation
+  --with-sound=alsa
+  --without-libotf
+  --without-m17n-flt
+  --without-gconf
+  --without-gsettings
+)
+%configure "${_conf[@]}"
+%{setarch} mold -run %make_build NATIVE_FULL_AOT=1
 cd ..
 
 # Sorted list of info files
@@ -457,7 +481,6 @@ rm -rf %{buildroot}%{prefix}/lib/debug/usr/libexec/emacs/28.0.50
 %{_datadir}/icons/hicolor/scalable/apps/emacs.svg
 %{_datadir}/icons/hicolor/scalable/apps/emacs.ico
 %{_datadir}/icons/hicolor/scalable/mimetypes/emacs-document.svg
-%{_datadir}/glib-2.0/schemas/org.gnu.emacs.defaults.gschema.xml
 
 %if %{enable_lucid}
 %files lucid
@@ -507,6 +530,11 @@ rm -rf %{buildroot}%{prefix}/lib/debug/usr/libexec/emacs/28.0.50
 %{_includedir}/emacs-module.h
 
 %changelog
+* Mon Jul  4 2022 Howard Cheung <mail@h-cheung.cf>
+- Use forge macros
+- Use mold
+- Update build options
+
 * Tue Aug 18 2020 Maximiliano Sandoval <msandova@protonmail.com> - 1:28.0.50-1
 - Build for emacs 28.0.50 with pgtk and native-comp
 
